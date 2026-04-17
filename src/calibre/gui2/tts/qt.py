@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 # License: GPLv3 Copyright: 2024, Kovid Goyal <kovid at kovidgoyal.net>
 
-
 from qt.core import QMediaDevices, QObject, QTextToSpeech
 
 from calibre.gui2.tts.types import EngineSpecificSettings, TTSBackend, Voice, qvoice_to_voice
@@ -53,10 +52,15 @@ class QtTTSBackend(TTSBackend):
     def say(self, text: str) -> None:
         self.last_word_offset = 0
         self.last_spoken_word = None
-        if self.tts.engine() == 'sapi':
-            # https://bugs.launchpad.net/bugs/2092948
-            text = text.replace('<3', ' 3')
-            self.ignore_tracking_until_state_changes_to_speaking = True
+        match self.tts.engine():
+            case 'sapi':
+                # https://bugs.launchpad.net/bugs/2092948
+                text = text.replace('<3', ' 3')
+                self.ignore_tracking_until_state_changes_to_speaking = True
+            case 'darwin':
+                # https://bugs.launchpad.net/bugs/2148341
+                import unicodedata
+                text = unicodedata.normalize('NFKC', text)
         self.speaking_text = text
         self.tts.say(text)
 
@@ -111,7 +115,7 @@ class QtTTSBackend(TTSBackend):
         self._current_settings = settings
 
     def _saying_word(self, word: str, utterance_id: int, start: int, length: int) -> None:
-        # print(f'{repr(word)=} {start=} {length=}, {repr(self.speaking_text[start:start+length])=} {self.ignore_tracking_until_state_changes_to_speaking=}')
+        print(f'{repr(word)=} {start=} {length=}, {repr(self.speaking_text[start:start+length])=} {self.ignore_tracking_until_state_changes_to_speaking=}')
         if self.ignore_tracking_until_state_changes_to_speaking:
             return
         # Qt's word tracking is broken with non-BMP unicode chars, the
@@ -122,7 +126,7 @@ class QtTTSBackend(TTSBackend):
             return
         self.last_spoken_word = key
         idx = self.speaking_text.find(word, self.last_word_offset)
-        # print(f'{self.last_word_offset=} {idx=}')
+        print(f'{self.last_word_offset=} {idx=}')
         if idx > -1:
             self.saying.emit(idx, len(word))
             self.last_word_offset = idx + len(word)
